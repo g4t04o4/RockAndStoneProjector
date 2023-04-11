@@ -4,10 +4,15 @@ namespace RockAndStoneProjector;
 
 internal static class Program
 {
-    private const string Path = @"C:\Images\tall_one";
-
     private static void Main(string[] args)
     {
-        Projector.GenerateModel(Path, 4, 5);
+        string? path = @"C:\Images\tall_one";
+        
+        int step = 4,
+            alphastep = 5;
+
+        var projector = new Projector(step, alphastep);
+
+        projector.GenerateModel(path);
     }
 }

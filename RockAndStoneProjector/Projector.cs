@@ -6,21 +6,37 @@ using System.Runtime.InteropServices;
 namespace RockAndStoneProjector;
 
 /// <summary>
-/// Проектор для создание модели по набору фотографий
+/// Проектор для создания модели по набору фотографий
 /// </summary>
-public static class Projector
+public class Projector
 {
     /// <summary>
-    /// Путь к директории с изображениями
+    /// Шаг в пикселях, также размер вокселя
     /// </summary>
-    private const string Path = @"C:\Images\tall_one";
+    private int Step { get; set; }
 
     /// <summary>
-    /// Получить лист всех файлов в директории по пути
+    /// Шаг поворота объекта на изображениях в градусах
     /// </summary>
-    /// <param name="path">Адрес директории</param>
+    private int AlphaStep { get; set; }
+
+    /// <summary>
+    /// Инициализация проектора
+    /// </summary>
+    /// <param name="step">Шаг в пикселях, также размер вокселя</param>
+    /// <param name="alphaStep">Шаг поворота объекта на изображениях в градусах</param>
+    public Projector(int step, int alphaStep)
+    {
+        Step = step;
+        AlphaStep = alphaStep;
+    }
+
+    /// <summary>
+    /// Возвращает лист всех файлов в директории по пути
+    /// </summary>
+    /// <param name="path">Путь к директории с файлами</param>
     /// <returns>Лист с адресами файлов</returns>
-    private static List<string> GetFiles(string path)
+    private List<string> GetFiles(string path)
     {
         // Получаем лист с путями
         var files = new List<string>(Directory.GetFiles(path));
@@ -33,20 +49,18 @@ public static class Projector
     }
 
     /// <summary>
-    /// Получить порядковый номер файла из его имени
+    /// Возвращает порядковый номер файла из его имени
     /// </summary>
-    /// <param name="file">Имя файла</param>
+    /// <param name="filename">Имя файла</param>
     /// <returns>Порядковый номер файла</returns>
-    private static double GetAlpha(string file)
+    private double GetSerialNumber(string filename)
     {
-        // Извлечём порядковый номер как строку
-        var alphaStr = file.Substring(file.LastIndexOf(".bmp", StringComparison.Ordinal) - 3, 3);
-
-        // Переведём его в числовой формат
-        var alpha = Convert.ToDouble(alphaStr);
+        // Получим порядковый номер из имени файла
+        var serial = Convert.ToDouble(
+            filename.Substring(filename.LastIndexOf(".bmp", StringComparison.Ordinal) - 3, 3));
 
         // Вернём порядковый номер
-        return alpha;
+        return serial;
     }
 
     /// <summary>
@@ -54,36 +68,36 @@ public static class Projector
     /// </summary>
     /// <param name="pixelBuffer">Скопированное в буфер изображение</param>
     /// <param name="sourceData">Атрибуты изображения</param>
-    /// <param name="step">Шаг прохода по изображению в пикселях</param>
     /// <returns>Массив слайсов модели</returns>
-    private static List<DoublePoint> GetTestPoints(byte[] pixelBuffer, BitmapData sourceData, int step)
+    private List<Slice> GetForm(byte[] pixelBuffer, BitmapData sourceData)
     {
         // Массив для тестовых точек
-        var testPoints = new List<DoublePoint>();
+        var form = new List<Slice>();
 
         // Граничное значение
         const int border = 90;
 
-        // Максимум по вертикали
-        var maxY = 750;
+//         // Максимум по вертикали
+//         var maxY = 750;
+//
+//         // Если максимум по вертикали больше высоты изображения, приравниваем его ей
+//         if (maxY > sourceData.Height)
+//              maxY = sourceData.Height;
 
-        // Если максимум по вертикали больше высоты изображения, приравниваем его ей
-#pragma warning disable CA1416
-        if (maxY > sourceData.Height)
-            maxY = sourceData.Height;
+        var maxY = sourceData.Height;
 
         // Получим левую границу модели
 
         // Проход по изображению по вертикали с шагом в пикселях
-        for (var offsetY = 0; offsetY < maxY; offsetY += step)
+        for (var offsetY = 0; offsetY < maxY; offsetY += Step)
         {
             // Проход по горизонтали с шагом в пикселях по строке изображения
-            for (var offsetX = 0; offsetX < sourceData.Width; offsetX += step)
+            for (var offsetX = 0; offsetX < sourceData.Width; offsetX += Step)
             {
                 // Текущий индекс пикселя с учётом линейного байтового массива
                 // Индекс строки умноженный на ширину строки плюс 
                 // Индекс столбца умноженный на шаг
-                var byteOffset = offsetY * sourceData.Stride + offsetX * step;
+                var byteOffset = offsetY * sourceData.Stride + offsetX * Step;
 
 
                 // Значение синего цвета пикселя 
@@ -100,30 +114,27 @@ public static class Projector
                     continue;
 
                 // Добавляем его в массив как горизонтальный слайс
-                testPoints.Add(new DoublePoint(offsetY, offsetX, offsetX));
+                form.Add(new Slice(offsetY, offsetX, offsetX));
                 // И идём на следующую строку
                 break;
             }
         }
-#pragma warning restore CA1416
 
         // Минимум по вертикали - координата по Y первой точки в массиве
-        var minY = testPoints.First().Y;
+        var minY = form.First().Y;
 
         // Максимум по вертикали - координата по Y последней точки в массиве
-        maxY = testPoints.Last().Y;
+        maxY = form.Last().Y;
 
         // Получим правую границу модели
-#pragma warning disable CA1416
         // Обход по вертикали от минимума до максимума с шагом
-        for (var offsetY = minY; offsetY <= maxY; offsetY += step)
+        for (var offsetY = minY; offsetY <= maxY; offsetY += Step)
         {
             //Обход по горизонтали справа-налево с шагом
-            for (var offsetX = sourceData.Width - 1; offsetX > 0; offsetX -= step)
+            for (var offsetX = sourceData.Width - 1; offsetX > 0; offsetX -= Step)
             {
                 // Текущий индекс пикселя
-
-                var byteOffset = offsetY * sourceData.Stride + offsetX * step;
+                var byteOffset = offsetY * sourceData.Stride + offsetX * Step;
 
 
                 // Значения цветов пикселя
@@ -136,32 +147,30 @@ public static class Projector
                     continue;
 
                 // Вертикальный индекс пикселя
-                var index = (offsetY - minY) / step;
+                var index = (offsetY - minY) / Step;
 
                 // Если этот индекс включен в массив
-                if (index < testPoints.Count)
+                if (index < form.Count)
                     // Записываем в правую горизонтальную координату координату правого пикселя
-                    testPoints[index].X1 = offsetX;
+                    form[index].Xr = offsetX;
                 // И идём на следующую строку
                 break;
             }
         }
-#pragma warning restore CA1416
 
         // Возвращаем массив с границами модели
-        return testPoints;
+        return form;
     }
 
 
     /// <summary>
+    /// Тут творится хрень
     /// </summary>
     /// <param name="sourceBitmap">Изображение с одного ракурса</param>
-    /// <param name="step">Шаг по изображению в пикселях</param>
     /// <returns>Массив слайсов модели</returns>
-    private static List<DoublePoint> GetObjectDoublePoints(Bitmap sourceBitmap, int step)
+    private List<Slice> GetFormButWeirdly(Bitmap sourceBitmap)
     {
         // Блокируем битмап в системной памяти только для чтения
-#pragma warning disable CA1416
         var sourceData = sourceBitmap.LockBits(
             new Rectangle(0, 0, sourceBitmap.Width, sourceBitmap.Height),
             ImageLockMode.ReadOnly,
@@ -177,14 +186,13 @@ public static class Projector
 
 
         // Получаем массив слайсов с модели
-        var points = GetTestPoints(pixelBuffer, sourceData, step);
+        var points = GetForm(pixelBuffer, sourceData);
 
         // Копируем результат обратно по адресу изображения
         Marshal.Copy(pixelBuffer, 0, sourceData.Scan0, pixelBuffer.Length);
 
         // Разблокируем битмап, который блокировали ранее
         sourceBitmap.UnlockBits(sourceData);
-#pragma warning restore CA1416
 
         // Возвращаем массив слайсов с модели, который мы получили из метода, который возвращает массив слайсов с модели
         return points;
@@ -194,191 +202,184 @@ public static class Projector
     /// Нормализует модель, эффективно сдвигая её в левый верхний угол по координатам
     /// </summary>
     /// <param name="testPoints">Ссылка на массив горизонтальных слайсов</param>
-    private static void NormalizeTestPoints(ref List<DoublePoint> testPoints)
+    private void NormalizeForm(ref List<Slice> testPoints)
     {
         // Минимум по вертикали - координата первой записи в массиве
         var minY = testPoints.First().Y;
 
         // Минимум по горизонтали - наименьшая координата 
-        var minX = testPoints.Min(p => p.X0);
+        var minX = testPoints.Min(p => p.Xl);
 
         // Вычитаем из всех координат слайсов минимальное значение, чтобы "сдвинуть" модель
         foreach (var p in testPoints)
         {
             p.Y -= minY;
-            p.X0 -= minX;
-            p.X1 -= minX;
+            p.Xl -= minX;
+            p.Xr -= minX;
         }
     }
 
     /// <summary>
     /// Создать прямоугольное облако точек по размерам модели
     /// </summary>
-    /// <param name="step">Шаг в пикселях</param>
     /// <param name="ySize">Размер модели по вертикали</param>
     /// <param name="minSize">Левая граница модели</param>
     /// <param name="maxSize">Правая граница модели</param>
     /// <returns>Лист трёхмерных точек</returns>
-    private static List<Point3D> MakeVirtualObject(int step, int ySize, int minSize, int maxSize)
+    private List<Point3D> GetPointCloudRectangle(int ySize, int minSize, int maxSize)
     {
         // Лист для хранения облака точек
-        var virtualObject = new List<Point3D>();
+        var pointCloud = new List<Point3D>();
 
         // Заполним облако точек точками
         // Обход с шагом по всем трём максимальным координатам модели
-        for (var y = 0; y < ySize; y += step)
+        for (var y = 0; y < ySize; y += Step)
         {
-            for (var x = 0; x < minSize; x += step)
+            for (var x = 0; x < minSize; x += Step)
             {
-                for (var z = 0; z < maxSize; z += step)
+                for (var z = 0; z < maxSize; z += Step)
                 {
                     // Добавление в лист точки
-                    virtualObject.Add(new Point3D(x, y, z));
+                    pointCloud.Add(new Point3D(x, y, z));
                 }
             }
         }
 
         // Вернём облако точек
-        return virtualObject;
+        return pointCloud;
     }
 
     /// <summary>
     /// Первый вырез формы из облака точек
     /// </summary>
-    /// <param name="virtualObject">Ссылка на облако точек</param>
-    /// <param name="section">Массив горизонтальных слайсов</param>
-    private static void MakeFirstCut(ref List<Point3D> virtualObject, List<DoublePoint> section)
+    /// <param name="pointCloud">Ссылка на облако точек</param>
+    /// <param name="form">Массив горизонтальных слайсов</param>
+    private void MakeFirstCut(ref List<Point3D> pointCloud, List<Slice> form)
     {
         // Создадим новое пустое облако точек
-        var newVirtualObject = new List<Point3D>(virtualObject.Count);
+        var newPointCloud = new List<Point3D>(pointCloud.Count);
 
         // Проход по всем точкам в облаке
-        foreach (var p in virtualObject)
+        foreach (var point in pointCloud)
         {
             // Проход по всем горизонтальным слайсам
-            foreach (var s in section)
+            foreach (var slice in form)
             {
                 // Если точка в облаке попадает под горизонтальный слайс на одной Y координате
-                if (p.X <= s.X0 ||
-                    p.X >= s.X1 ||
-                    p.Y != s.Y)
+                if (point.X <= slice.Xl ||
+                    point.X >= slice.Xr ||
+                    point.Y != slice.Y)
                     continue;
                 // Добавим её в новое облако точек
-                newVirtualObject.Add(p);
+                newPointCloud.Add(point);
                 // Переходим на следующий слайс
                 break;
             }
         }
 
         // Очищаем предыдущее облако точек
-        virtualObject.Clear();
+        pointCloud.Clear();
 
         // И перезаписываем в него 
-        virtualObject = newVirtualObject;
+        pointCloud = newPointCloud;
     }
 
 
     /// <summary>
     /// Формула координаты Х проекции точки
     /// </summary>
-    /// <param name="virtualObject">Облако точек</param>
-    /// <param name="alphaStepRadians">Шаг угла в радианах</param>
+    /// <param name="pointCloud">Облако точек</param>
+    /// <param name="currentAlphaStep">Текущий угол поворота формы</param>
     /// <param name="j">Индекс точки</param>
     /// <returns>Координата Х проекции точки</returns>
-    private static int GetPointProjection(List<Point3D> virtualObject, double alphaStepRadians, int j)
+    private int GetPointProjection(List<Point3D> pointCloud, int currentAlphaStep, int j)
     {
-        var beta = Math.Atan2(virtualObject[j].Z, virtualObject[j].X);
-        return (int)(Math.Sqrt(virtualObject[j].X * virtualObject[j].X + virtualObject[j].Z * virtualObject[j].Z) *
-                     Math.Cos(beta + alphaStepRadians));
+        var beta = Math.Atan2(pointCloud[j].Z, pointCloud[j].X);
+        return (int)(Math.Sqrt(pointCloud[j].X * pointCloud[j].X + pointCloud[j].Z * pointCloud[j].Z) *
+                     Math.Cos(beta + currentAlphaStep * Math.PI / 180.0));
     }
 
     /// <summary>
     /// Последующие вырезы формы из облака точек
     /// </summary>
-    /// <param name="virtualObject">Облако точек</param>
-    /// <param name="section">Форма</param>
-    /// <param name="step">Шаг в пикселях</param>
-    /// <param name="alphaStep">Шаг угловой</param>
-    /// <param name="delta">????????????</param>
-    private static void MakeSecondCut(ref List<Point3D> virtualObject, List<DoublePoint> section, int step,
-        int alphaStep, int delta)
+    /// <param name="pointCloud">Облако точек</param>
+    /// <param name="form">Форма</param>
+    /// <param name="currentAlphaStep">Текущий угол поворота формы</param>
+    private void MakeSecondCut(ref List<Point3D> pointCloud, List<Slice> form, int currentAlphaStep)
     {
         // Пустое облако точек
-        var newVirtualObject = new List<Point3D>(virtualObject.Count);
-
-        // Угловой шаг в радианах
-        var alphaStepRadians = alphaStep * Math.PI / 180.0;
+        var newPointCloud = new List<Point3D>(pointCloud.Count);
 
         // Пустая проекция
-        var projection = new List<DoublePoint>();
+        var projection = new List<Slice>();
 
         // Заполнение проекции минимальным и максимальным значениями типа данных ???
-        for (var i = 0; i < section.Count; i++)
+        for (var i = 0; i < form.Count; i++)
         {
-            projection.Add(new DoublePoint(i, int.MaxValue, int.MinValue));
+            projection.Add(new Slice(i, int.MaxValue, int.MinValue));
         }
 
         // Проход по всем точкам облака точек
-        for (var j = 0; j < virtualObject.Count; j++)
+        for (var j = 0; j < pointCloud.Count; j++)
         {
             // Получение координаты Х проекции точки
-            var x = GetPointProjection(virtualObject, alphaStepRadians, j);
+            var x = GetPointProjection(pointCloud, currentAlphaStep, j);
 
             // Индекс точки - её Y координата, делённая на шаг
-            var index = virtualObject[j].Y / step;
+            var index = pointCloud[j].Y / Step;
 
             // Пропускаем точку, если её индекс по вертикали больше, чем размер проекции
             if (index >= projection.Count)
                 continue;
 
             // Перенос координат Х
-            if (projection[index].X0 > x)
-                projection[index].X0 = x;
+            if (projection[index].Xl > x)
+                projection[index].Xl = x;
 
-            if (projection[index].X1 < x)
-                projection[index].X1 = x;
+            if (projection[index].Xr < x)
+                projection[index].Xr = x;
         }
 
         // Наибольшая правая координата и наименьшая левая координата, делённые на 2, для проекции
-        var maxPrX1 = (projection.Max(line => line.X1) + projection.Min(line => line.X0)) / 2;
+        var maxPrX1 = (projection.Max(line => line.Xr) + projection.Min(line => line.Xl)) / 2;
 
         // Наибольшая правая и наименьшая левая координаты, делённые на 2, для секции
-        var maxSecX1 = (section.Max(line => line.X1) + section.Min(line => line.X0)) / 2;
+        var maxSecX1 = (form.Max(line => line.Xr) + form.Min(line => line.Xl)) / 2;
 
         // Разница между ними
         var diff = maxPrX1 - maxSecX1;
 
 
         // Обход по всем точкам облака
-        for (var j = 0; j < virtualObject.Count; j++)
+        for (var j = 0; j < pointCloud.Count; j++)
         {
             // Получение Х координаты проекции точки, но с учётом разницы для выравнивания границ
-            var x = GetPointProjection(virtualObject, alphaStepRadians, j) - diff;
+            var x = GetPointProjection(pointCloud, currentAlphaStep, j) - diff;
 
             // Индекс по вертикали (координата Y, делённая на шаг)
-            var i = virtualObject[j].Y / step;
+            var i = pointCloud[j].Y / Step;
 
             // Условие принадлежности точки форме
-            if (i < section.Count &&
-                x > section[i].X0 - delta &&
-                x < section[i].X1 + delta &&
-                virtualObject[j].Y == section[i].Y)
+            if (i < form.Count &&
+                x > form[i].Xl &&
+                x < form[i].Xr &&
+                pointCloud[j].Y == form[i].Y)
                 // Запись точки в пустое облако
-                newVirtualObject.Add(virtualObject[j]);
+                newPointCloud.Add(pointCloud[j]);
         }
 
         // Перезаписывание нового облака поверх старого
-        virtualObject = newVirtualObject;
+        pointCloud = newPointCloud;
     }
 
     /// <summary>
     /// Удаление всех точек внутри формы
     /// </summary>
-    /// <param name="virtualObject">Ссылка на облако точек</param>
-    private static void RemoveInside(ref List<Point3D> virtualObject)
+    /// <param name="pointCloud">Ссылка на облако точек</param>
+    private void RemoveInside(ref List<Point3D> pointCloud)
     {
         // Пустое облако точек
-        var newVirtualObject = new List<Point3D>();
+        var newPointCloud = new List<Point3D>();
 
         // Инициализация границ
         int minX = int.MaxValue,
@@ -389,32 +390,32 @@ public static class Projector
             maxZ = int.MinValue;
 
         // Нахождение минимальных и максимальных значений для каждой оси
-        foreach (var p in virtualObject)
+        foreach (var point in pointCloud)
         {
-            if (p.X < minX)
-                minX = p.X;
+            if (point.X < minX)
+                minX = point.X;
 
-            if (p.X > maxX)
-                maxX = p.X;
+            if (point.X > maxX)
+                maxX = point.X;
 
-            if (p.Y < minY)
-                minY = p.Y;
+            if (point.Y < minY)
+                minY = point.Y;
 
-            if (p.Y > maxY)
-                maxY = p.Y;
+            if (point.Y > maxY)
+                maxY = point.Y;
 
-            if (p.Z < minZ)
-                minZ = p.Z;
+            if (point.Z < minZ)
+                minZ = point.Z;
 
-            if (p.Z > maxZ)
-                maxZ = p.Z;
+            if (point.Z > maxZ)
+                maxZ = point.Z;
         }
 
         // Словарь для линий
         var lines = new Dictionary<int, Dictionary<int, List<int>>>();
 
         // Обход по облаку точек для x линий
-        foreach (var p in virtualObject)
+        foreach (var p in pointCloud)
         {
             // Странная хрень
             // Перевод облака точек в новый формат линий?
@@ -439,15 +440,15 @@ public static class Projector
             {
                 var x0 = lines[z][y].Min();
                 var x1 = lines[z][y].Max();
-                newVirtualObject.Add(new Point3D(x0, y, z));
-                newVirtualObject.Add(new Point3D(x1, y, z));
+                newPointCloud.Add(new Point3D(x0, y, z));
+                newPointCloud.Add(new Point3D(x1, y, z));
             }
         }
 
         // Обход по облаку точек для z линий
         lines = new Dictionary<int, Dictionary<int, List<int>>>();
 
-        foreach (var p in virtualObject)
+        foreach (var p in pointCloud)
         {
             var x = p.X;
             var y = p.Y;
@@ -469,15 +470,15 @@ public static class Projector
             {
                 var z0 = lines[x][y].Min();
                 var z1 = lines[x][y].Max();
-                newVirtualObject.Add(new Point3D(x, y, z0));
-                newVirtualObject.Add(new Point3D(x, y, z1));
+                newPointCloud.Add(new Point3D(x, y, z0));
+                newPointCloud.Add(new Point3D(x, y, z1));
             }
         }
 
         // Обход по облаку точек для y линий
         lines = new Dictionary<int, Dictionary<int, List<int>>>();
 
-        foreach (var p in virtualObject)
+        foreach (var p in pointCloud)
         {
             var x = p.X;
             var z = p.Z;
@@ -499,44 +500,43 @@ public static class Projector
             {
                 var y0 = lines[z][x].Min();
                 var y1 = lines[z][x].Max();
-                newVirtualObject.Add(new Point3D(x, y0, z));
-                newVirtualObject.Add(new Point3D(x, y1, z));
+                newPointCloud.Add(new Point3D(x, y0, z));
+                newPointCloud.Add(new Point3D(x, y1, z));
             }
         }
 
         // Очистка переданного по ссылке облака точек
-        virtualObject.Clear();
+        pointCloud.Clear();
 
         // Копирование результата в облако точек
-        virtualObject = newVirtualObject;
+        pointCloud = newPointCloud;
     }
 
 
     /// <summary>
     /// Сжатие облака точек
     /// </summary>
-    /// <param name="virtualObject">Облако точек по ссылке</param>
-    /// <param name="step">Шаг в пикселях</param>
-    private static void ShrinkVirtualObject(ref List<Point3D> virtualObject, int step)
+    /// <param name="pointCloud">Облако точек по ссылке</param>
+    private void ShrinkVirtualObject(ref List<Point3D> pointCloud)
     {
         // Коэффициент для сжатия модели
-        var halfStep = 1;
+        var shrinkValue = Step / 2;
 
-        if (step > 1)
-        {
-            halfStep = step / 2;
-            if (step % 2 > 0)
-                halfStep++;
-        }
+        // if (Step > 1)
+        // {
+        //     halfStep = Step / 2;
+        //     if (Step % 2 > 0)
+        //         halfStep++;
+        // }
 
 
         // Деление всех целочисленных координат модели на определённое число
-        for (var i = 0; i < virtualObject.Count; i++)
+        for (var i = 0; i < pointCloud.Count; i++)
         {
-            virtualObject[i] = new Point3D(
-                virtualObject[i].X / halfStep,
-                virtualObject[i].Y / halfStep,
-                virtualObject[i].Z / halfStep);
+            pointCloud[i] = new Point3D(
+                pointCloud[i].X / shrinkValue,
+                pointCloud[i].Y / shrinkValue,
+                pointCloud[i].Z / shrinkValue);
         }
     }
 
@@ -562,16 +562,16 @@ public static class Projector
     /// <summary>
     /// Создание записи о полигоне по трём точкам
     /// </summary>
-    /// <param name="arr">Форма полигона грани</param>
+    /// <param name="facet">Форма полигона грани</param>
     /// <param name="point">Точка из облака точек</param>
     /// <returns>Строка с гранью</returns>
-    private static string GetFacet(int[][] arr, Point3D point)
+    private string GetFacet(int[][] facet, Point3D point)
     {
         // Инициализация строки
         var outStr = "\tfacet normal 0 0 0\n\t\touter loop\n";
 
         // Обход по точкам полигона
-        foreach (var p in arr)
+        foreach (var p in facet)
         {
             // Добавление записей о точках
             var vertex = string.Format("\t\t\tvertex {0} {1} {2}\n",
@@ -594,7 +594,7 @@ public static class Projector
     /// </summary>
     /// <param name="point">Точка из облака точек</param>
     /// <returns>Строку с данными о вокселе</returns>
-    private static string GetVoxel(Point3D point)
+    private string GetVoxel(Point3D point)
     {
         // Инициализация строки
         var outStr = new StringBuilder("");
@@ -612,7 +612,7 @@ public static class Projector
     /// </summary>
     /// <param name="points">Облако точек</param>
     /// <param name="path">Путь</param>
-    private static void SaveStl(List<Point3D> points, string path)
+    private void SaveStl(List<Point3D> points, string path)
     {
         // Инициализируем строку
         var outStr = new StringBuilder("solid model\n");
@@ -636,7 +636,7 @@ public static class Projector
     /// </summary>
     /// <param name="points">Облако точек</param>
     /// <param name="path">Путь</param>
-    private static void SaveXyz(List<Point3D> points, string path)
+    private void SaveXyz(List<Point3D> points, string path)
     {
         // Инициализируем строку
         var outStr = new StringBuilder("");
@@ -644,7 +644,7 @@ public static class Projector
         // Присоединяем точки из облака как воксели
         foreach (var point in points)
         {
-            outStr.Append(string.Format("{0} {1} {2}",
+            outStr.Append(string.Format("{0} {1} {2}\n",
                 point.X,
                 point.Y,
                 point.Z));
@@ -655,67 +655,61 @@ public static class Projector
     }
 
 
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="path">Путь к изображениям</param>
-    /// <param name="step">Шаг в пикселях</param>
-    /// <param name="alphastep">Шаг угла поворота объекта</param>
-    public static void GenerateModel(string path, int step, int alphastep)
+    public void GenerateModel(string path)
     {
-        // Пустой лист для секций - массивов горизонтальных слайсов модели
-        var sections = new List<List<DoublePoint>>();
+        // Пустой лист для форм
+        var forms = new List<List<Slice>>();
 
-        foreach (var file in GetFiles(path))
+        foreach (var filepath in GetFiles(path))
         {
             // Имя файла изображения
-            var shortName = file.Substring(path.Length + 1);
+            var filename = filepath.Substring(path.Length + 1);
 
-            if (File.Exists(file) && file.EndsWith(".bmp"))
-            {
-                // Порядковый номер файла
-                var alpha = GetAlpha(file);
+            // Пропуск если файл не существует или не изображение
+            // TODO: нужно запилить обработку файлов разных форматов
+            if (!File.Exists(filepath) || !filepath.EndsWith(".bmp"))
+                continue;
 
-                // Изображение в битмап
-#pragma warning disable CA1416
-                var bmp = (Bitmap)Image.FromFile(file);
-#pragma warning restore CA1416
+            // Порядковый номер файла
+            var serialNumber = GetSerialNumber(filepath);
 
-                // Получим массив горизонтальных слайсов с изображения
-                var points = GetObjectDoublePoints(bmp, step);
+            // Изображение в битмап
+            var bitmapImage = (Bitmap)Image.FromFile(filepath);
 
-                // Нормализуем массив слайсов
-                NormalizeTestPoints(ref points);
+            // Получим массив горизонтальных слайсов с изображения
+            var form = GetFormButWeirdly(bitmapImage);
 
-                // Добавим его как секцию
-                sections.Add(points);
+            // Нормализуем массив слайсов
+            NormalizeForm(ref form);
 
-                //Выведем в консоль информацию о конкретной секции
-                // Имя файла
-                // Количество горизонтальных слайсов
-                // Порядковый номер изображения
-                // Наибольшая разница между горизонтальными координатами (ширина модели)
+            // Добавим его как секцию
+            forms.Add(form);
 
-                // что-то странное, надо понять, что это вообще
-                // Наименьший слайс, в котором левая и правая координаты равны
-                Console.WriteLine("{0}: {1}, alpha: {2}, max size: {3}, min size: {4}",
-                    shortName,
-                    points.Count,
-                    alpha,
-                    points.Max(point => point.X1 - point.X0),
-                    points.Min(point => point.X1 = point.X0));
-            }
+            //Выведем в консоль информацию о конкретной секции
+            // Имя файла
+            // Количество горизонтальных слайсов
+            // Порядковый номер изображения
+            // Наибольшая разница между горизонтальными координатами (ширина модели)
+
+            // что-то странное, надо понять, что это вообще
+            // Наименьший слайс, в котором левая и правая координаты равны
+            Console.WriteLine("{0}: {1}, alpha: {2}, max size: {3}, min size: {4}",
+                filename,
+                form.Count,
+                serialNumber,
+                form.Max(point => point.Xr - point.Xl),
+                form.Min(point => point.Xr = point.Xl));
         }
 
         // Лист с размерами
         var sizes = new List<int>();
 
         // Обход по всем секциям
-        foreach (var section in sections)
+        foreach (var form in forms)
         {
             // аналогично, что за максимальный слайс в секции, у которого равны координаты?
             // Запись в размер наибольшего элемента, у которого равны горизонтальные координаты
-            sizes.Add(section.Max(line => line.X1 = line.X0));
+            sizes.Add(form.Max(line => line.Xr = line.Xl));
         }
 
         // Наименьший размер модели по горизонтали и его индекс
@@ -724,7 +718,7 @@ public static class Projector
         Console.WriteLine("Min size: {0}; min size index {1}, alpha: {2}",
             minSize,
             minSecIndex,
-            minSecIndex * alphastep);
+            minSecIndex * AlphaStep);
 
         // Наибольший размер по горизонтали и его индекс
         var maxSize = sizes.Max();
@@ -732,31 +726,31 @@ public static class Projector
         Console.WriteLine("Max size: {0}; max size index {1}, alpha: {2}",
             maxSize,
             maxSecIndex,
-            maxSecIndex * alphastep);
+            maxSecIndex * AlphaStep);
 
 
         // Размер по вертикали
-        var ySize = sections.Max(section => section.Last().Y - section.First().Y);
+        var ySize = forms.Max(form => form.Last().Y - form.First().Y);
 
 
         // Создание облака точек в форме куба в размер
         Console.WriteLine("Make Virtual Object");
-        var virtualObject = MakeVirtualObject(step, ySize, minSize, maxSize);
+        var virtualObject = GetPointCloudRectangle(ySize, minSize, maxSize);
 
         // Первый вырез проекции в облако точек
         Console.WriteLine("Make Cuts");
-        MakeFirstCut(ref virtualObject, sections[minSecIndex]);
+        MakeFirstCut(ref virtualObject, forms[minSecIndex]);
 
 
         // Проход по углам с шагом
-        for (var i = 0; i < (100 / alphastep); i++)
+        for (var i = 0; i < (100 / AlphaStep); i++)
         {
             var j = i + minSecIndex;
-            if (j >= sections.Count)
-                j -= sections.Count;
+            if (j >= forms.Count)
+                j -= forms.Count;
 
             // Последующие вырезания проекций из облака точек
-            MakeSecondCut(ref virtualObject, sections[j], step, alphastep * i, 0);
+            MakeSecondCut(ref virtualObject, forms[j], AlphaStep * i);
             Console.WriteLine("Size: {0}", virtualObject.Count);
         }
 
@@ -765,7 +759,7 @@ public static class Projector
         RemoveInside(ref virtualObject);
 
         // Сжатие облака точек
-        ShrinkVirtualObject(ref virtualObject, step);
+        ShrinkVirtualObject(ref virtualObject);
 
         // Сохранение в формате XYZ
         Console.WriteLine("Save XYZ");
@@ -773,6 +767,6 @@ public static class Projector
 
         // Вокселизация и сохранение в формате STL
         Console.WriteLine("Save STL");
-        SaveStl(virtualObject, Path + "\\points");
+        SaveStl(virtualObject, path + "\\points");
     }
 }

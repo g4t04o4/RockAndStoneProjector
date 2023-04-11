@@ -5,14 +5,11 @@
 /// </summary>
 public class Point3D
 {
-    public int X { get; set; }
+    public int X { get; }
 
-    public int Y { get; set; }
+    public int Y { get; }
 
-    /// <summary>
-    /// Вертикальная координата
-    /// </summary>
-    public int Z { get; set; }
+    public int Z { get; }
 
     public Point3D(int x, int y, int z)
     {

@@ -3,7 +3,7 @@
 /// <summary>
 /// Класс для горизонтального слайса с изображения
 /// </summary>
-public class DoublePoint
+public class Slice
 {
     /// <summary>
     /// Вертикальная координата
@@ -13,17 +13,17 @@ public class DoublePoint
     /// <summary>
     /// Левая горизонтальная координата
     /// </summary>
-    public int X0 { get; set; }
+    public int Xl { get; set; }
 
     /// <summary>
     /// Правая горизонтальная координата
     /// </summary>
-    public int X1 { get; set; }
+    public int Xr { get; set; }
 
-    public DoublePoint(int y, int x0, int x1)
+    public Slice(int y, int xl, int xr)
     {
         Y = y;
-        X0 = x0;
-        X1 = x1;
+        Xl = xl;
+        Xr = xr;
     }
 }
