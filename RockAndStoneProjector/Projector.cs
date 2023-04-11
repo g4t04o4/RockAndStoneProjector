@@ -56,8 +56,10 @@ public class Projector
     private double GetSerialNumber(string filename)
     {
         // Получим порядковый номер из имени файла
+        // TODO: добавить поддержку разных форматов изображений
+        // Возможно, записывать их также в поле/конфиг?
         var serial = Convert.ToDouble(
-            filename.Substring(filename.LastIndexOf(".bmp", StringComparison.Ordinal) - 3, 3));
+            filename.Substring(filename.LastIndexOf(".png", StringComparison.Ordinal) - 3, 3));
 
         // Вернём порядковый номер
         return serial;
@@ -667,8 +669,9 @@ public class Projector
 
             // Пропуск если файл не существует или не изображение
             // TODO: нужно запилить обработку файлов разных форматов
-            if (!File.Exists(filepath) || !filepath.EndsWith(".bmp"))
+            if (!File.Exists(filepath) || !(filepath.EndsWith(".bmp") || filepath.EndsWith(".png")))
                 continue;
+
 
             // Порядковый номер файла
             var serialNumber = GetSerialNumber(filepath);
