@@ -69,9 +69,9 @@ public class Projector
     /// Получить границы модели как массив горизонтальных слайсов с изображения
     /// </summary>
     /// <param name="pixelBuffer">Скопированное в буфер изображение</param>
-    /// <param name="sourceData">Атрибуты изображения</param>
+    /// <param name="imageData">Атрибуты изображения</param>
     /// <returns>Массив слайсов модели</returns>
-    private List<Slice> GetForm(byte[] pixelBuffer, BitmapData sourceData)
+    private List<Slice> GetForm(byte[] pixelBuffer, BitmapData imageData)
     {
         // Массив для тестовых точек
         var form = new List<Slice>();
@@ -83,10 +83,10 @@ public class Projector
 //         var maxY = 750;
 //
 //         // Если максимум по вертикали больше высоты изображения, приравниваем его ей
-//         if (maxY > sourceData.Height)
-//              maxY = sourceData.Height;
+//         if (maxY > imageData.Height)
+//              maxY = imageData.Height;
 
-        var maxY = sourceData.Height;
+        var maxY = imageData.Height;
 
         // Получим левую границу модели
 
@@ -94,12 +94,12 @@ public class Projector
         for (var offsetY = 0; offsetY < maxY; offsetY += Step)
         {
             // Проход по горизонтали с шагом в пикселях по строке изображения
-            for (var offsetX = 0; offsetX < sourceData.Width; offsetX += Step)
+            for (var offsetX = 0; offsetX < imageData.Width; offsetX += Step)
             {
                 // Текущий индекс пикселя с учётом линейного байтового массива
                 // Индекс строки умноженный на ширину строки плюс 
                 // Индекс столбца умноженный на шаг
-                var byteOffset = offsetY * sourceData.Stride + offsetX * Step;
+                var byteOffset = offsetY * imageData.Stride + offsetX * Step;
 
 
                 // Значение синего цвета пикселя 
@@ -112,13 +112,13 @@ public class Projector
                 int r = pixelBuffer[byteOffset + 2];
 
                 // Если суммарно эти значения превышают некую границу, то пиксель считается частью модели
-                if (r + g + b <= border)
-                    continue;
-
-                // Добавляем его в массив как горизонтальный слайс
-                form.Add(new Slice(offsetY, offsetX, offsetX));
-                // И идём на следующую строку
-                break;
+                if (r + g + b > border)
+                {
+                    // Добавляем его в массив как горизонтальный слайс
+                    form.Add(new Slice(offsetY, offsetX, offsetX));
+                    // И идём на следующую строку
+                    break;
+                }
             }
         }
 
@@ -133,10 +133,10 @@ public class Projector
         for (var offsetY = minY; offsetY <= maxY; offsetY += Step)
         {
             //Обход по горизонтали справа-налево с шагом
-            for (var offsetX = sourceData.Width - 1; offsetX > 0; offsetX -= Step)
+            for (var offsetX = imageData.Width - 1; offsetX > 0; offsetX -= Step)
             {
                 // Текущий индекс пикселя
-                var byteOffset = offsetY * sourceData.Stride + offsetX * Step;
+                var byteOffset = offsetY * imageData.Stride + offsetX * Step;
 
 
                 // Значения цветов пикселя
@@ -145,18 +145,18 @@ public class Projector
                 int r = pixelBuffer[byteOffset + 2];
 
                 // Если значения больше границы, то считаем пиксель частью модели
-                if (r + g + b <= border)
-                    continue;
+                if (r + g + b > border)
+                {
+                    // Вертикальный индекс пикселя
+                    var index = (offsetY - minY) / Step;
 
-                // Вертикальный индекс пикселя
-                var index = (offsetY - minY) / Step;
-
-                // Если этот индекс включен в массив
-                if (index < form.Count)
-                    // Записываем в правую горизонтальную координату координату правого пикселя
-                    form[index].Xr = offsetX;
-                // И идём на следующую строку
-                break;
+                    // Если этот индекс включен в массив
+                    if (index < form.Count)
+                        // Записываем в правую горизонтальную координату координату правого пикселя
+                        form[index].Xr = offsetX;
+                    // И идём на следующую строку
+                    break;
+                }
             }
         }
 
@@ -188,7 +188,7 @@ public class Projector
 
 
         // Получаем массив слайсов с модели
-        var points = GetForm(pixelBuffer, sourceData);
+        var form = GetForm(pixelBuffer, sourceData);
 
         // Копируем результат обратно по адресу изображения
         Marshal.Copy(pixelBuffer, 0, sourceData.Scan0, pixelBuffer.Length);
@@ -197,7 +197,7 @@ public class Projector
         sourceBitmap.UnlockBits(sourceData);
 
         // Возвращаем массив слайсов с модели, который мы получили из метода, который возвращает массив слайсов с модели
-        return points;
+        return form;
     }
 
     /// <summary>
